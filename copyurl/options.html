@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>URL Collector Settings</title>
+  <style>
+    body {
+      width: 400px;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+    }
+    h1 {
+      font-size: 18px;
+      margin-top: 0;
+    }
+    .option-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    input, select, textarea {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 10px;
+      box-sizing: border-box;
+    }
+    button {
+      padding: 8px 12px;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    .shortcut {
+      margin-top: 10px;
+      padding: 8px;
+      background: #f5f5f5;
+      border-radius: 4px;
+    }
+    #fileContent {
+      height: 150px;
+      font-family: monospace;
+      white-space: pre;
+    }
+  </style>
+</head>
+<body>
+  <h1>URL Collector - Settings</h1>
+  
+  <div class="option-group">
+    <label for="fileName">File Name:</label>
+    <input type="text" id="fileName" placeholder="e.g., urls.txt">
+  </div>
+  
+  <div class="option-group">
+    <label>
+      Append timestamp  <input type="checkbox" id="appendTimestamp">
+    </label>
+  </div>
+  
+  <div class="option-group">
+    <label for="format">Entry Format:</label>
+    <input type="text" id="format" placeholder="e.g., [{timestamp}] {url}">
+    <small>Available variables: {url}, {timestamp}</small>
+  </div>
+  
+  <div class="option-group">
+    <label for="fileContent">Current File Content:</label>
+    <textarea id="fileContent" readonly></textarea>
+    <button id="downloadFile">Download File</button>
+    <button id="clearFile">Clear File</button>
+  </div>
+  
+  <div class="option-group">
+    <p>Current shortcut:</p>
+    <div class="shortcut" id="current-shortcut">Ctrl+Shift+Y</div>
+    <button id="change-shortcut">Change Shortcut</button>
+  </div>
+  
+  <button id="saveSettings">Save Settings</button>
+
+  <script src="options.js"></script>
+</body>
+</html>

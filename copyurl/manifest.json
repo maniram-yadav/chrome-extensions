@@ -1,0 +1,34 @@
+{
+    "manifest_version": 3,
+    "name": "URL Collector",
+    "version": "1.0",
+    "description": "Appends current page URLs to a configurable file when keyboard shortcut is pressed on any page",
+    "icons": {
+      "16": "icons/website.png",
+      "48": "icons/website.png",
+      "128": "icons/website.png"
+    },
+    "background": {
+      "service_worker": "background.js"
+    },
+    "permissions": [
+      "activeTab",
+      "storage",
+      "commands",
+      "notifications"
+    ],
+    "action": {
+      "default_icon": "icons/website.png",
+      "default_popup": "options.html"
+    },
+    "commands": {
+      "append-url": {
+        "suggested_key": {
+          "default": "Ctrl+Shift+Q",
+          "mac": "Command+Shift+Q"
+        },
+        "description": "Append current URL to file"
+      }
+    },
+    "options_page": "options.html"
+  }
