@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Text Saver Settings</title>
+  <style>
+    body { width: 400px; padding: 20px; font-family: Arial; }
+    .option-group { margin-bottom: 15px; }
+    .option-group label { display : inline; }
+    label { display: inline; margin-bottom: 5px; font-weight: bold; }
+    input, textarea { width: 100%; padding: 8px; margin-bottom: 10px; }
+    button { padding: 8px 12px; background: #4CAF50; color: white; border: none; cursor: pointer; }
+    #fileContent { height: 150px; font-family: monospace; }
+  </style>
+</head>
+<body>
+  <h1>Text Saver Settings</h1>
+  
+  <div class="option-group">
+    <label for="fileName">File Name:</label>
+    <input type="text" id="fileName" placeholder="saved_text.txt">
+  </div>
+  
+  <div class="option-group">
+    <label>
+      Include timestamp <input type="checkbox" id="appendTimestamp">
+    </label>
+  </div>
+  
+  <div class="option-group">
+    <label for="format">Entry Format:</label>
+    <input type="text" id="format" placeholder="[{timestamp}] {text}">
+    <small>Use {text} for selected text and {timestamp} for time</small>
+  </div>
+  
+  <div class="option-group">
+    <label for="fileContent">Saved Text:</label>
+    <textarea id="fileContent" readonly></textarea>
+    <button id="download">Download File</button>
+    <button id="clear">Clear File</button>
+  </div>
+  
+  <div class="option-group">
+    <p>Current shortcut: <span id="shortcut">Ctrl+Shift+S</span></p>
+    <button id="changeShortcut">Change Shortcut</button>
+  </div>
+  
+  <button id="save">Save Settings</button>
+
+  <script src="options.js"></script>
+</body>
+</html>

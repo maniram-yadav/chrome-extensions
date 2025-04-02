@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Text Saver",
+  "version": "1.0",
+  "description": "Copies selected text form chrome web page automatically and saves to file with configured keyboard shortcut",
+  "icons": {
+    "16": "icons/paste.png",
+    "48": "icons/paste.png",
+    "128": "icons/paste.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ],
+  "permissions": [
+    "activeTab",
+    "storage",
+    "commands",
+    "clipboardWrite",
+    "notifications"
+  ],
+  "action": {
+    "default_icon": "icons/paste.png",
+    "default_popup": "options.html"
+  },
+  "commands": {
+    "save-selection": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S",
+        "mac": "Command+Shift+S"
+      },
+      "description": "Save selected text to file"
+    }
+  },
+  "options_page": "options.html"
+}
