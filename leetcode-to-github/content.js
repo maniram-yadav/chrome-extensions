@@ -218,6 +218,7 @@ function getFileExtension(language) {
 async function pushToGitHub(config, filePath, content, problemTitle) {
   const apiUrl = `https://api.github.com/repos/${config.repoOwner}/${config.repoName}/contents/${filePath}`;
   
+  // alert( `\n ${JSON.stringify(config)} \n ${problemTitle}`);
   try {
     // Check if file exists to handle duplicates
     const existingFile = await fetch(apiUrl, {
@@ -228,6 +229,7 @@ async function pushToGitHub(config, filePath, content, problemTitle) {
       }
     });
     
+    alert(existingFile.ok);
     let newFilePath = filePath;
     if (existingFile.ok) {
       const fileData = await existingFile.json();
@@ -246,7 +248,7 @@ async function pushToGitHub(config, filePath, content, problemTitle) {
     
     // Create or update file
     const response = await fetch(apiUrl, {
-      method: 'PUT',
+      method: 'POST',
       headers: {
         'Authorization': `token ${config.githubToken}`,
         'Accept': 'application/vnd.github.v3+json',
@@ -258,7 +260,8 @@ async function pushToGitHub(config, filePath, content, problemTitle) {
         branch: config.branchName || 'main'
       })
     });
-    
+    alert(response.ok)
+    alert(JSON.stringify(response));
     if (response.ok) {
       alert(`Successfully saved solution to GitHub: ${newFilePath}`);
     } else {
