@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>LeetCode to GitHub</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>LeetCode to GitHub</h1>
+    <div class="form-group">
+      <label for="githubToken">GitHub Personal Access Token:</label>
+      <input type="password" id="githubToken" placeholder="ghp_...">
+    </div>
+    <div class="form-group">
+      <label for="repoOwner">Repository Owner:</label>
+      <input type="text" id="repoOwner" placeholder="your-username">
+    </div>
+    <div class="form-group">
+      <label for="repoName">Repository Name:</label>
+      <input type="text" id="repoName" placeholder="leetcode-solutions">
+    </div>
+    <div class="form-group">
+      <label for="branchName">Branch Name:</label>
+      <input type="text" id="branchName" placeholder="main" value="main">
+    </div>
+    <button id="saveConfig">Save Configuration</button>
+    <div id="status"></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
