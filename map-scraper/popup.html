@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <h1>Maps Business Scraper</h1>
+    <span id="badge" class="badge idle">Idle</span>
+  </header>
+
+  <section class="stats">
+    <div class="stat"><span id="count">0</span><label>Businesses</label></div>
+    <div class="stat"><span id="pending">0</span><label>Pending details</label></div>
+  </section>
+
+  <div class="query" title="Search query (used as CSV file name)">
+    <label>Search:</label> <span id="query">—</span>
+  </div>
+
+  <section class="options">
+    <label><input type="checkbox" id="detailed" checked> Open each listing for full details (phone, website, hours…)</label>
+    <label><input type="checkbox" id="autoScroll"> Auto-scroll results list</label>
+  </section>
+
+  <section class="buttons">
+    <button id="start" class="primary">Start scraping</button>
+    <button id="stop" class="danger" hidden>Stop</button>
+    <button id="export">Export CSV</button>
+    <button id="clear" class="ghost">Clear data</button>
+  </section>
+
+  <p id="message" class="message"></p>
+
+  <script src="popup.js"></script>
+</body>
+</html>
