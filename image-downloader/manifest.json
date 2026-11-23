@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Image Downloader",
+  "version": "1.0.0",
+  "description": "Adds a download button to every real (non-icon) image on the page. One click saves it with its alt text (or the date-time) as the name, keeping the original format.",
+  "minimum_chrome_version": "102",
+  "permissions": ["downloads", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "action": {
+    "default_title": "Image Downloader",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

@@ -1,0 +1,139 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Area Video Recorder</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <div class="brand"><span class="logo"></span> Area Video Recorder</div>
+  </header>
+
+  <!-- Active recording panel -->
+  <section id="activePanel" class="card active hidden">
+    <div class="rec-row">
+      <span class="dot"></span>
+      <span id="activeText">Recording…</span>
+      <span id="activeTime" class="mono">00:00</span>
+    </div>
+    <div class="row">
+      <button id="stopBtn" class="btn danger wide">■ Stop &amp; save</button>
+    </div>
+  </section>
+
+  <!-- Setup panel -->
+  <section id="setupPanel">
+    <div class="card">
+      <div class="row">
+        <button id="selectBtn" class="btn primary wide">⬚ Select area &amp; record</button>
+      </div>
+      <div class="row">
+        <button id="fullBtn" class="btn wide">▭ Record whole visible tab</button>
+      </div>
+      <div class="opts">
+        <label class="chk"><input type="checkbox" id="optTabAudio" checked> Tab audio</label>
+        <label class="chk"><input type="checkbox" id="optMic" checked> Microphone (voice)</label>
+        <a href="#" id="grantMic" class="link hidden">Grant mic access</a>
+      </div>
+      <div class="opts">
+        <label>Format
+          <select id="optFormat">
+            <option value="webm">WebM</option>
+            <option value="mp4">MP4</option>
+          </select>
+        </label>
+        <label>Quality
+          <select id="optBitrate">
+            <option value="2500000">Low</option>
+            <option value="6000000" selected>Medium</option>
+            <option value="12000000">High</option>
+          </select>
+        </label>
+        <label>FPS
+          <select id="optFps">
+            <option value="24">24</option>
+            <option value="30" selected>30</option>
+            <option value="60">60</option>
+          </select>
+        </label>
+      </div>
+      <div id="msg" class="msg hidden"></div>
+    </div>
+
+    <details class="card" id="labelCard" open>
+      <summary>Label overlay <span class="muted">(burned into the video)</span></summary>
+      <label class="block">Text
+        <textarea id="lblText" rows="2" placeholder="Leave empty for no label"></textarea>
+      </label>
+
+      <div class="label-grid">
+        <div>
+          <div class="sub">Position</div>
+          <div class="pos-grid" id="posGrid">
+            <button data-pos="top-left" title="Top left">↖</button>
+            <button data-pos="top-center" title="Top center">↑</button>
+            <button data-pos="top-right" title="Top right">↗</button>
+            <button data-pos="middle-left" title="Middle left">←</button>
+            <button data-pos="middle-center" title="Middle center">•</button>
+            <button data-pos="middle-right" title="Middle right">→</button>
+            <button data-pos="bottom-left" title="Bottom left">↙</button>
+            <button data-pos="bottom-center" title="Bottom center">↓</button>
+            <button data-pos="bottom-right" title="Bottom right">↘</button>
+          </div>
+          <div class="muted small" id="posName">top-left</div>
+        </div>
+        <div class="preview-wrap">
+          <div class="sub">Preview</div>
+          <div class="preview" id="preview"><span id="previewLabel"></span></div>
+        </div>
+      </div>
+
+      <div class="field">
+        <span>Size</span>
+        <input type="range" id="lblSize" min="8" max="120" value="28">
+        <input type="number" id="lblSizeNum" min="8" max="400" value="28"><span class="muted">px</span>
+      </div>
+      <div class="field">
+        <span>Rotation</span>
+        <input type="range" id="lblRot" min="-180" max="180" value="0">
+        <input type="number" id="lblRotNum" min="-180" max="180" value="0"><span class="muted">°</span>
+      </div>
+      <div class="field">
+        <span>Color</span>
+        <input type="color" id="lblColor" value="#ffffff">
+        <label class="chk"><input type="checkbox" id="lblBold" checked> Bold</label>
+        <label class="chk"><input type="checkbox" id="lblBg" checked> Background</label>
+        <input type="color" id="lblBgColor" value="#000000">
+      </div>
+    </details>
+  </section>
+
+  <section class="card">
+    <div class="list-head">
+      <h3>Recordings <span id="count" class="muted"></span></h3>
+      <button id="clearAll" class="btn small danger-outline">Clear all</button>
+    </div>
+    <div id="list" class="list"></div>
+    <div id="empty" class="muted empty">No recordings yet.</div>
+  </section>
+
+  <template id="itemTpl">
+    <div class="item">
+      <video class="thumb" preload="metadata" muted></video>
+      <div class="meta">
+        <input class="name" type="text" placeholder="Name (optional)">
+        <div class="info muted small"></div>
+        <div class="actions">
+          <button class="btn small primary dl">⬇ Download</button>
+          <button class="btn small play">▶ Play</button>
+          <button class="btn small danger-outline del" title="Delete">✕</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <script src="db.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
