@@ -2,9 +2,24 @@
 
 const contentEl = document.getElementById('content');
 const noticeEl = document.getElementById('notice');
+const clearAllBtn = document.getElementById('clear-all');
 document.getElementById('refresh').addEventListener('click', scan);
+clearAllBtn.addEventListener('click', clearAll);
 
 let tab = null;
+let currentItems = []; // everything currently shown, for "Clear all"
+
+const hiddenKey = () => 'hidden_' + tab.id;
+
+async function getHidden() {
+  return new Set((await chrome.storage.session.get(hiddenKey()))[hiddenKey()] || []);
+}
+
+async function addHidden(urls) {
+  const hidden = await getHidden();
+  urls.forEach((u) => hidden.add(u));
+  await chrome.storage.session.set({ [hiddenKey()]: [...hidden] });
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -188,11 +203,12 @@ async function scan() {
 
   const netKey = 'net_' + tab.id;
   const network = (await chrome.storage.session.get(netKey))[netKey] || [];
+  const hidden = await getHidden();
 
-  render(buildItems(frames, network), frames);
+  render(buildItems(frames, network, hidden), frames);
 }
 
-function buildItems(frames, network) {
+function buildItems(frames, network, hidden) {
   const blobItems = [];
   const otherItems = [];
   const seenUrls = new Set();
@@ -203,7 +219,7 @@ function buildItems(frames, network) {
     const frameId = fr.frameId;
     const frameHost = r.isTop ? '' : hostOf(r.frameUrl);
     const elByUrl = new Map(r.els.filter((x) => x.url).map((x) => [x.url, x]));
-    const knownBlobUrls = new Set();
+    const knownBlobUrls = new Set(r.data ? r.data.removedUrls || [] : []);
 
     if (r.data) {
       // Streaming videos (MediaSource) - one item per captured track.
@@ -261,7 +277,7 @@ function buildItems(frames, network) {
 
     // DOM elements.
     for (const x of r.els) {
-      if (!x.url) continue;
+      if (!x.url || hidden.has(x.url)) continue;
       const meta = [
         x.width ? `${x.width}×${x.height}` : '',
         formatDuration(x.duration),
@@ -284,7 +300,7 @@ function buildItems(frames, network) {
 
   // Network-detected videos.
   for (const n of network) {
-    if (seenUrls.has(n.url)) continue;
+    if (seenUrls.has(n.url) || hidden.has(n.url)) continue;
     seenUrls.add(n.url);
     otherItems.push(directItem(n.url, n.contentType, n.size, ['seen in network'], ''));
   }
@@ -325,7 +341,9 @@ function render({ blobItems, otherItems }, frames) {
     noticeEl.hidden = false;
   }
 
-  if (!blobItems.length && !otherItems.length) {
+  currentItems = [...blobItems, ...otherItems];
+  clearAllBtn.disabled = !currentItems.length;
+  if (!currentItems.length) {
     contentEl.append(el('p', 'empty', 'No videos found on this page. Try playing the video, then press Refresh.'));
     return;
   }
@@ -335,15 +353,42 @@ function render({ blobItems, otherItems }, frames) {
 
 function section(title, items) {
   if (!items.length) return;
+  const wrap = el('section');
   const h = el('h2', '', title);
   h.append(el('span', 'count', String(items.length)));
-  contentEl.append(h);
-  items.forEach((item) => contentEl.append(row(item)));
+  wrap.append(h, ...items.map(row));
+  contentEl.append(wrap);
+}
+
+// Remove one row from the UI, fixing up the section count / empty state.
+function removeRow(rowEl) {
+  const wrap = rowEl.closest('section');
+  rowEl.remove();
+  const left = wrap.querySelectorAll('.item').length;
+  if (left) wrap.querySelector('.count').textContent = String(left);
+  else wrap.remove();
+  if (!contentEl.querySelector('.item')) {
+    clearAllBtn.disabled = true;
+    contentEl.replaceChildren(el('p', 'empty', 'List is empty. New videos will show up when you press Refresh.'));
+  }
 }
 
 function row(item) {
-  const btn = el('button', 'item');
+  const rowEl = el('div', 'item');
+  const btn = el('button', 'main');
   btn.type = 'button';
+  btn.title = 'Download';
+  const del = el('button', 'del', '×');
+  del.type = 'button';
+  del.title = 'Remove from list';
+  rowEl.append(btn, del);
+
+  del.addEventListener('click', async () => {
+    del.disabled = btn.disabled = true;
+    await deleteItems([item]);
+    currentItems = currentItems.filter((i) => i !== item);
+    removeRow(rowEl);
+  });
 
   const thumb = el('div', 'thumb ' + (item.stream ? 'stream' : item.kind), item.badge);
   if (item.poster) {
@@ -379,7 +424,58 @@ function row(item) {
     }
     btn.disabled = false;
   });
-  return btn;
+  return rowEl;
+}
+
+// ---------------------------------------------------------------------------
+// Delete / clear
+// ---------------------------------------------------------------------------
+
+// Injected into a frame (MAIN world): drop captured data for the given ids.
+function removeInFrame(ids) {
+  const api = window.__blobVideoDownloader__;
+  if (!api) return;
+  if (ids === null) api.clear();
+  else ids.forEach((id) => api.remove(id));
+}
+
+// Captured blobs / stream tracks are removed from the page (frees memory);
+// everything else is remembered as hidden for this tab until it reloads.
+async function deleteItems(items) {
+  const byFrame = new Map();
+  const hide = [];
+  for (const item of items) {
+    if ((item.kind === 'blob' || item.kind === 'mse') && !item.unhooked) {
+      if (!byFrame.has(item.frameId)) byFrame.set(item.frameId, []);
+      byFrame.get(item.frameId).push(item.target);
+    } else {
+      hide.push(item.url);
+    }
+  }
+  if (hide.length) await addHidden(hide);
+  await Promise.all([...byFrame].map(([frameId, ids]) =>
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id, frameIds: [frameId] },
+      world: 'MAIN',
+      func: removeInFrame,
+      args: [ids],
+    }).catch((e) => console.warn('[bvd] remove failed', e))));
+}
+
+async function clearAll() {
+  if (!tab || !currentItems.length) return;
+  clearAllBtn.disabled = true;
+  await deleteItems(currentItems.filter((i) => i.kind === 'direct' || i.unhooked));
+  // Also wipe captures in every frame, including ones not currently listed.
+  await chrome.scripting.executeScript({
+    target: { tabId: tab.id, allFrames: true },
+    world: 'MAIN',
+    func: removeInFrame,
+    args: [null],
+  }).catch((e) => console.warn('[bvd] clear failed', e));
+  currentItems = [];
+  noticeEl.hidden = true;
+  contentEl.replaceChildren(el('p', 'empty', 'List cleared. New videos will show up when you press Refresh.'));
 }
 
 // ---------------------------------------------------------------------------

@@ -23,6 +23,7 @@
   const sources = new Map(); // id -> MediaSource entry
   const sourceByMs = new WeakMap(); // MediaSource -> entry
   const trackBySb = new WeakMap(); // SourceBuffer -> track
+  const removedUrls = new Set(); // blob: URLs the user deleted from the list
 
   const isMediaType = (t) => /^(video|audio)\//i.test(t || '');
   const isUntyped = (t) => !t || /^application\/(octet-stream|binary)/i.test(t);
@@ -99,7 +100,7 @@
     sbProto.appendBuffer = function (data) {
       try {
         const track = trackBySb.get(this);
-        if (track && data) {
+        if (track && data && !track.removed) {
           const view = data instanceof ArrayBuffer
             ? new Uint8Array(data)
             : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
@@ -144,23 +145,59 @@
     return null;
   }
 
+  // A removed track stops capturing for good: restarting mid-stream would
+  // produce a file without its init segment, which can't be played.
+  function removeTrack(entry, track) {
+    if (track.removed) return;
+    totalBytes -= track.bytes;
+    track.chunks = [];
+    track.bytes = 0;
+    track.removed = true;
+    if (entry.tracks.every((t) => t.removed)) entry.urls.forEach((u) => removedUrls.add(u));
+  }
+
   const api = {
     list() {
       return {
         blobs: [...blobs.values()].map(({ id, url, type, size, created, revoked }) =>
           ({ id, url, type, size, created, revoked })),
         sources: [...sources.values()]
-          .filter((e) => e.tracks.some((t) => t.bytes > 0))
+          .filter((e) => e.tracks.some((t) => t.bytes > 0 && !t.removed))
           .map((e) => ({
             id: e.id,
             urls: e.urls.slice(),
             created: e.created,
             ended: e.ended,
-            tracks: e.tracks.map((t) => ({
+            tracks: e.tracks.filter((t) => !t.removed).map((t) => ({
               id: t.id, mime: t.mime, bytes: t.bytes, chunks: t.chunks.length, truncated: t.truncated,
             })),
           })),
+        removedUrls: [...removedUrls],
       };
+    },
+
+    // Delete one blob or one MSE track from the list and free its memory.
+    remove(id) {
+      if (blobs.has(id)) {
+        const b = blobs.get(id);
+        blobs.delete(id);
+        blobByUrl.delete(b.url);
+        removedUrls.add(b.url);
+        return true;
+      }
+      for (const entry of sources.values()) {
+        const track = entry.tracks.find((t) => t.id === id);
+        if (track) { removeTrack(entry, track); return true; }
+      }
+      return false;
+    },
+
+    // Delete everything captured so far in this frame.
+    clear() {
+      for (const b of blobs.values()) removedUrls.add(b.url);
+      blobs.clear();
+      blobByUrl.clear();
+      for (const entry of sources.values()) entry.tracks.forEach((t) => removeTrack(entry, t));
     },
 
     // Returns a Blob for a recorded blob id, a recorded MSE track id, or a blob: URL.

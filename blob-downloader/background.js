@@ -5,6 +5,7 @@
 const VIDEO_EXT = /\.(mp4|m4v|webm|mkv|mov|avi|flv|wmv|ogv|3gp|ts|m3u8|mpd)$/i;
 const MAX_PER_TAB = 150;
 const key = (tabId) => 'net_' + tabId;
+const hiddenKey = (tabId) => 'hidden_' + tabId; // URLs the user deleted from the popup list
 
 // Serialize writes so concurrent responses don't overwrite each other.
 let queue = Promise.resolve();
@@ -21,8 +22,8 @@ chrome.webRequest.onHeadersReceived.addListener(
     if (tabId < 0 || !/^https?:/i.test(url)) return;
 
     if (type === 'main_frame') {
-      // New page in this tab: forget what we saw on the previous page.
-      enqueue(() => chrome.storage.session.remove(key(tabId)));
+      // New page in this tab: forget what we saw (and hid) on the previous page.
+      enqueue(() => chrome.storage.session.remove([key(tabId), hiddenKey(tabId)]));
     }
 
     let path = '';
@@ -54,5 +55,5 @@ chrome.webRequest.onHeadersReceived.addListener(
 );
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  enqueue(() => chrome.storage.session.remove(key(tabId)));
+  enqueue(() => chrome.storage.session.remove([key(tabId), hiddenKey(tabId)]));
 });

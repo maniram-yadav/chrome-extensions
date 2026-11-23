@@ -18,6 +18,12 @@ Chrome extension (Manifest V3) that lists every video on the current page, both 
 | `<video>` / `<source>` elements, links to video files (incl. shadow DOM) | DOM scan of every frame when the popup opens | `chrome.downloads` |
 | Video files seen in network traffic (mp4, webm, m3u8, mpd, …) | `background.js` via `webRequest` | `chrome.downloads` |
 
+## Managing the list
+
+- **×** on a row removes that video from the list.
+- **Clear all** in the header removes every video.
+- Removed videos stay hidden on **Refresh** and reappear only when the page is reloaded or navigates. For blob/streaming videos, removing also frees the captured data from the page's memory and stops capturing that stream. To capture it again, reload the page.
+
 ## Notes / limitations
 
 - **Streaming (MSE) videos are captured while they play.** Play the video from start to end without seeking to get a complete file. Seeking or quality changes can leave gaps or mixed segments.

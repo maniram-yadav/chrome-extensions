@@ -8,7 +8,10 @@
 <body>
   <header>
     <h1>Blob Video Downloader</h1>
-    <button id="refresh" title="Scan the page again">&#x21bb; Refresh</button>
+    <div class="actions">
+      <button id="clear-all" title="Remove every video from the list">&#x1f5d1; Clear all</button>
+      <button id="refresh" title="Scan the page again">&#x21bb; Refresh</button>
+    </div>
   </header>
 
   <div id="notice" class="notice" hidden></div>
@@ -18,7 +21,7 @@
   </main>
 
   <footer>
-    Click a video to download it. Files are named by the current date &amp; time.
+    Click a video to download it (named by current date &amp; time). &times; removes it from the list.
   </footer>
 
   <script src="popup.js"></script>
