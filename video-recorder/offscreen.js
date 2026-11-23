@@ -43,26 +43,23 @@ async function prepare({ streamId, options: opts }) {
     },
   });
 
-  audioCtx = new AudioContext();
-  mixDest = audioCtx.createMediaStreamDestination();
-
-  // Tab capture mutes the tab for the user; route it back to the speakers.
-  if (tabStream.getAudioTracks().length) {
-    const tabSrc = audioCtx.createMediaStreamSource(tabStream);
-    tabSrc.connect(audioCtx.destination);
-    if (options.tabAudio !== false) tabSrc.connect(mixDest);
-  }
-
   if (options.mic) {
     try {
       micStream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: false, // AGC pumps the voice up and makes it too loud
+          channelCount: 1,
+          sampleRate: 48000,
+        },
       });
-      audioCtx.createMediaStreamSource(micStream).connect(mixDest);
     } catch (e) {
       warning = 'Microphone unavailable (' + e.name + '). Use "Grant mic access" in the popup. Recording without mic.';
     }
   }
+
+  buildAudioGraph();
 
   tabStream.getVideoTracks()[0].addEventListener('ended', () => {
     if (recorder && recorder.state === 'recording') {
@@ -71,6 +68,60 @@ async function prepare({ streamId, options: opts }) {
   });
 
   return { ok: true, warning };
+}
+
+// Audio: decides which audio track goes into the recording.
+//  - single source at 100% volume → the raw track is recorded directly (no resampling/mixing).
+//  - otherwise → AudioContext mix with per-source gain + high-pass on mic + limiter.
+// The tab is always played back to the speakers (tab capture mutes it otherwise).
+let recordAudioTracks = [];
+function buildAudioGraph() {
+  recordAudioTracks = [];
+  const tabTrack = tabStream.getAudioTracks()[0] || null;
+  const micTrack = micStream ? micStream.getAudioTracks()[0] : null;
+  const useTab = !!tabTrack && options.tabAudio !== false;
+  const useMic = !!micTrack;
+  const tabVol = (options.tabVolume ?? 100) / 100;
+  const micVol = (options.micVolume ?? 100) / 100;
+
+  audioCtx = new AudioContext({ sampleRate: 48000, latencyHint: 'balanced' });
+
+  if (tabTrack) {
+    // Monitoring only (what the user hears) — not part of the recorded mix path.
+    audioCtx.createMediaStreamSource(new MediaStream([tabTrack])).connect(audioCtx.destination);
+  }
+
+  if (useTab && !useMic && tabVol === 1) { recordAudioTracks = [tabTrack]; return; }
+  if (useMic && !useTab && micVol === 1) { recordAudioTracks = [micTrack]; return; }
+  if (!useTab && !useMic) return;
+
+  mixDest = audioCtx.createMediaStreamDestination();
+  // Limiter so summed sources never clip (clipping = crackle/distortion).
+  const limiter = audioCtx.createDynamicsCompressor();
+  limiter.threshold.value = -3;
+  limiter.knee.value = 3;
+  limiter.ratio.value = 20;
+  limiter.attack.value = 0.003;
+  limiter.release.value = 0.25;
+  limiter.connect(mixDest);
+
+  if (useTab) {
+    const g = audioCtx.createGain();
+    g.gain.value = tabVol;
+    audioCtx.createMediaStreamSource(new MediaStream([tabTrack])).connect(g);
+    g.connect(limiter);
+  }
+  if (useMic) {
+    const hp = audioCtx.createBiquadFilter(); // cut rumble/hum below 80 Hz
+    hp.type = 'highpass';
+    hp.frequency.value = 80;
+    const g = audioCtx.createGain();
+    g.gain.value = micVol;
+    audioCtx.createMediaStreamSource(micStream).connect(hp);
+    hp.connect(g);
+    g.connect(limiter);
+  }
+  recordAudioTracks = mixDest.stream.getAudioTracks();
 }
 
 function pickMime(format) {
@@ -97,39 +148,57 @@ async function start({ rect, viewport, label }) {
   const generator = new MediaStreamTrackGenerator({ kind: 'video' });
   const reader = processor.readable.getReader();
   const writer = generator.writable.getWriter();
-  const pipe = { stopped: false, reader, writer };
+  const ticker = new Worker('ticker.js');
+  const pipe = { stopped: false, reader, writer, ticker, latest: null };
   pipelineAbort = pipe;
 
   const pxScale = outSize.w / rect.w; // CSS px → video px
   const fx = VREffects.create(options.effects, outSize.w, outSize.h, pxScale);
 
+  // Reader: just keep the newest captured frame (tab capture only delivers frames
+  // when the page changes, so they arrive irregularly).
   (async () => {
     while (!pipe.stopped) {
-      const { value: frame, done } = await reader.read();
+      const { value: frame, done } = await reader.read().catch(() => ({ done: true }));
       if (done) break;
-      try {
-        const fw = frame.displayWidth, fh = frame.displayHeight;
-        const sx = fw / viewport.w, sy = fh / viewport.h;
-        const src = [rect.x * sx, rect.y * sy, rect.w * sx, rect.h * sy];
-        fx.drawFrame(ctx, frame, src);
-        drawLabel(ctx, label, outSize.w, outSize.h, pxScale);
-        const out = new VideoFrame(canvas, { timestamp: frame.timestamp });
-        frame.close();
-        await writer.write(out);
-        out.close();
-      } catch (e) {
-        try { frame.close(); } catch (_) {}
-        if (pipe.stopped) break;
-        console.warn('frame error', e);
-      }
+      if (pipe.stopped) { frame.close(); break; }
+      if (pipe.latest) pipe.latest.close();
+      pipe.latest = frame;
     }
   })();
 
-  const tracks = [generator];
-  if (mixDest && (options.tabAudio !== false || micStream)) {
-    tracks.push(...mixDest.stream.getAudioTracks());
-  }
-  const recStream = new MediaStream(tracks);
+  // Ticker: emit frames at a CONSTANT rate with timestamps from one monotonic clock.
+  // Irregular / foreign-clock video timestamps make MediaRecorder glitch the audio.
+  const t0 = performance.now();
+  let hasImage = false;
+  let busy = false;
+  ticker.onmessage = async () => {
+    if (pipe.stopped || busy) return;
+    busy = true;
+    try {
+      const frame = pipe.latest;
+      if (frame) {
+        pipe.latest = null;
+        const sx = frame.displayWidth / viewport.w, sy = frame.displayHeight / viewport.h;
+        fx.drawFrame(ctx, frame, [rect.x * sx, rect.y * sy, rect.w * sx, rect.h * sy]);
+        frame.close();
+        drawLabel(ctx, label, outSize.w, outSize.h, pxScale);
+        hasImage = true;
+      }
+      if (hasImage) {
+        const out = new VideoFrame(canvas, { timestamp: Math.round((performance.now() - t0) * 1000) });
+        await writer.write(out);
+        out.close();
+      }
+    } catch (e) {
+      if (!pipe.stopped) console.warn('frame error', e);
+    } finally {
+      busy = false;
+    }
+  };
+  ticker.postMessage({ fps: options.fps || 30 });
+
+  const recStream = new MediaStream([generator, ...recordAudioTracks]);
 
   mimeType = pickMime(options.format);
   recorder = new MediaRecorder(recStream, {
@@ -234,9 +303,12 @@ async function cancel() {
 
 async function cleanup() {
   if (pipelineAbort) {
-    pipelineAbort.stopped = true;
-    try { pipelineAbort.reader.cancel(); } catch (_) {}
-    try { pipelineAbort.writer.close(); } catch (_) {}
+    const p = pipelineAbort;
+    p.stopped = true;
+    p.ticker.terminate();
+    if (p.latest) { try { p.latest.close(); } catch (_) {} p.latest = null; }
+    p.reader.cancel().catch(() => {});
+    p.writer.close().catch(() => {});
     pipelineAbort = null;
   }
   if (recorder && recorder.state !== 'inactive') {
@@ -248,4 +320,5 @@ async function cleanup() {
   tabStream = micStream = null;
   if (audioCtx) { try { await audioCtx.close(); } catch (_) {} }
   audioCtx = mixDest = null;
+  recordAudioTracks = [];
 }

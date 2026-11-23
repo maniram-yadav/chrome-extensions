@@ -3,6 +3,8 @@ const $ = (id) => document.getElementById(id);
 const DEFAULT_SETTINGS = {
   tabAudio: true,
   mic: true,
+  tabVolume: 100,
+  micVolume: 70,
   format: 'webm',
   bitrate: 6000000,
   fps: 30,
@@ -46,6 +48,9 @@ async function loadSettings() {
   $('optTabAudio').checked = settings.tabAudio;
   $('optMic').checked = settings.mic;
   $('optFormat').value = settings.format;
+  $('optTabVol').value = settings.tabVolume;
+  $('optMicVol').value = settings.micVolume;
+  updateVolOutputs();
   $('optBitrate').value = String(settings.bitrate);
   $('optFps').value = String(settings.fps);
   const l = settings.label;
@@ -59,6 +64,13 @@ async function loadSettings() {
   setPosition(l.position, false);
   writeEffectControls();
   updatePreview();
+}
+
+function updateVolOutputs() {
+  $('optTabVolOut').textContent = $('optTabVol').value + '%';
+  $('optMicVolOut').textContent = $('optMicVol').value + '%';
+  $('optTabVol').disabled = !$('optTabAudio').checked;
+  $('optMicVol').disabled = !$('optMic').checked;
 }
 
 function writeEffectControls() {
@@ -79,6 +91,8 @@ function readSettings() {
   settings.tabAudio = $('optTabAudio').checked;
   settings.mic = $('optMic').checked;
   settings.format = $('optFormat').value;
+  settings.tabVolume = Number($('optTabVol').value);
+  settings.micVolume = Number($('optMicVol').value);
   settings.bitrate = Number($('optBitrate').value);
   settings.fps = Number($('optFps').value);
   Object.assign(settings.label, {
@@ -96,6 +110,7 @@ function readSettings() {
 
 function saveSettings() {
   readSettings();
+  updateVolOutputs();
   updateEffectOutputs();
   updatePreview();
   updateMicHint();
@@ -216,6 +231,8 @@ async function start(mode) {
     options: {
       tabAudio: settings.tabAudio,
       mic: settings.mic,
+      tabVolume: settings.tabVolume,
+      micVolume: settings.micVolume,
       format: settings.format,
       bitrate: settings.bitrate,
       fps: settings.fps,
@@ -388,6 +405,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     .forEach((id) => $(id).addEventListener('change', saveSettings));
   $('lblText').addEventListener('input', saveSettings);
 
+  $('optTabVol').addEventListener('input', saveSettings);
+  $('optMicVol').addEventListener('input', saveSettings);
   $('fxPreset').addEventListener('change', saveSettings);
   FX_FIELDS.forEach((k) => $(fxId(k)).addEventListener('input', saveSettings));
   $('fxReset').addEventListener('click', () => {
