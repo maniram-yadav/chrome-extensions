@@ -8,7 +8,12 @@
     try { window.__imageDownloader.destroy(); } catch (_) {}
   }
 
+  const { normalizeEffect, isEffectActive, filterString, DEFAULT_SETTINGS, loadSettings } = globalThis.IDL;
+
   // ---- Settings ------------------------------------------------------------
+  // enabled / effect come from the popup (chrome.storage.local).
+  // Starts disabled so nothing flashes on screen before the saved settings are read.
+  let settings = { ...DEFAULT_SETTINGS, enabled: false };
   const MIN_SIDE = 80;            // rendered width AND height must be at least this (px)
   const MIN_AREA = 100 * 100;     // rendered area must be at least this (px²)
   const MIN_NATURAL = 64;         // the image file itself must be at least this big (px)
@@ -109,9 +114,13 @@
     const btn = document.createElement('button');
     btn.className = 'btn';
     btn.type = 'button';
-    btn.title = 'Download image';
+    btn.title = idleTitle();
     btn.setAttribute('aria-label', 'Download image');
     btn.innerHTML = ICONS.download;
+
+    // While hovering the button, preview the effect on the image itself.
+    btn.addEventListener('mouseenter', () => startPreview(img));
+    btn.addEventListener('mouseleave', () => stopPreview(img));
 
     // Keep the page from reacting (links, lightboxes, drag handlers...).
     const swallow = (e) => { e.stopPropagation(); };
@@ -127,14 +136,55 @@
     return btn;
   }
 
+  const idleTitle = () =>
+    isEffectActive(settings.effect) ? 'Download image with effect' : 'Download image';
+
+  // ---- Effect preview ----------------------------------------------------------
+  // Only filter + flip are previewed: rotating would move the image (and the button) away
+  // from the mouse.
+  const previews = new Map(); // img -> saved inline style values
+  function startPreview(img) {
+    const e = settings.effect;
+    if (!isEffectActive(e) || previews.has(img)) return;
+    const s = img.style;
+    previews.set(img, {
+      filter: [s.getPropertyValue('filter'), s.getPropertyPriority('filter')],
+      transform: [s.getPropertyValue('transform'), s.getPropertyPriority('transform')],
+    });
+    const shownScale = img.naturalWidth ? img.getBoundingClientRect().width / img.naturalWidth : 1;
+    s.setProperty('filter', filterString(e, shownScale), 'important');
+    if (e.flipH || e.flipV) {
+      const base = getComputedStyle(img).transform;
+      const flip = `scale(${e.flipH ? -1 : 1}, ${e.flipV ? -1 : 1})`;
+      s.setProperty('transform', base && base !== 'none' ? `${base} ${flip}` : flip, 'important');
+    }
+  }
+  function stopPreview(img) {
+    const saved = previews.get(img);
+    if (!saved) return;
+    previews.delete(img);
+    for (const prop of ['filter', 'transform']) {
+      const [value, priority] = saved[prop];
+      if (value) img.style.setProperty(prop, value, priority);
+      else img.style.removeProperty(prop);
+    }
+  }
+  const stopAllPreviews = () => { for (const img of [...previews.keys()]) stopPreview(img); };
+
   function untrack(img) {
     const rec = tracked.get(img);
     if (!rec) return;
+    stopPreview(img);
     rec.btn.remove();
     tracked.delete(img);
   }
 
   function scan() {
+    if (!settings.enabled) {
+      for (const img of [...tracked.keys()]) untrack(img);
+      host.remove();
+      return;
+    }
     attachHost();
     const cache = new Map();
     const seen = new Set();
@@ -242,12 +292,12 @@
     btn.classList.remove('busy', 'done', 'error');
     if (state !== 'download') btn.classList.add(state);
     btn.innerHTML = ICONS[state];
-    btn.title = title || 'Download image';
+    btn.title = title || idleTitle();
   }
 
   async function downloadImage(img, btn) {
     if (btn.classList.contains('busy')) return;
-    setState(btn, 'busy', 'Downloading…');
+    setState(btn, 'busy', isEffectActive(settings.effect) ? 'Applying effect…' : 'Downloading…');
     try {
       let url = srcOf(img);
       if (url.startsWith('blob:')) url = await blobUrlToDataUrl(img, url);
@@ -288,9 +338,25 @@
 
   // Safety net for sliders / JS animations that move images without any event.
   const posInterval = setInterval(() => { if (!document.hidden) queuePosition(); }, 300);
-  const scanInterval = setInterval(() => { if (!document.hidden) queueScan(0); }, 2000);
+  const scanInterval = setInterval(() => { if (!document.hidden && settings.enabled) queueScan(0); }, 2000);
 
-  scan();
+  const applySettings = (next) => {
+    settings = { enabled: next.enabled !== false, effect: normalizeEffect(next.effect) };
+    stopAllPreviews();
+    for (const rec of tracked.values()) {
+      if (!rec.btn.classList.contains('busy')) rec.btn.title = idleTitle();
+    }
+    scan();
+  };
+  const onStorage = (changes, area) => {
+    if (area !== 'local' || (!changes.enabled && !changes.effect)) return;
+    applySettings({
+      enabled: changes.enabled ? changes.enabled.newValue : settings.enabled,
+      effect: changes.effect ? changes.effect.newValue : settings.effect,
+    });
+  };
+  chrome.storage.onChanged.addListener(onStorage);
+  loadSettings().then(applySettings, () => applySettings(DEFAULT_SETTINGS));
 
   window.__imageDownloader = {
     destroy() {
@@ -303,6 +369,8 @@
       document.removeEventListener('transitionend', onScroll, true);
       document.removeEventListener('animationend', onScroll, true);
       window.removeEventListener('resize', onResize);
+      try { chrome.storage.onChanged.removeListener(onStorage); } catch (_) {}
+      stopAllPreviews();
       host.remove();
       tracked.clear();
     },

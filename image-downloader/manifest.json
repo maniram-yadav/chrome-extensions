@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Image Downloader",
-  "version": "1.0.0",
-  "description": "Adds a download button to every real (non-icon) image on the page. One click saves it with its alt text (or the date-time) as the name, keeping the original format.",
-  "minimum_chrome_version": "102",
-  "permissions": ["downloads", "scripting"],
+  "version": "1.1.0",
+  "description": "Adds a download button to every real (non-icon) image on the page. One click saves it with its alt text (or the date-time) as the name, keeping the original format. Optional effects (filters, rotate, flip) are applied before saving.",
+  "minimum_chrome_version": "116",
+  "permissions": ["downloads", "scripting", "storage", "offscreen"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
@@ -12,13 +12,14 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "js": ["shared.js", "content.js"],
       "run_at": "document_idle",
       "all_frames": true
     }
   ],
   "action": {
     "default_title": "Image Downloader",
+    "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
