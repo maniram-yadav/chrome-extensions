@@ -95,9 +95,16 @@
   (document.body || document.documentElement).appendChild(host);
 
   // Floating-button visibility is a user setting (toggled from the popup).
-  chrome.storage.local.get({ showFab: true }, ({ showFab }) => { fab.hidden = !showFab; });
+  // Settings (toggled from the popup).
+  let autoCopy = true;
+  chrome.storage.local.get({ showFab: true, autoCopy: true }, (s) => {
+    fab.hidden = !s.showFab;
+    autoCopy = s.autoCopy;
+  });
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes.showFab) fab.hidden = !changes.showFab.newValue;
+    if (area !== 'local') return;
+    if (changes.showFab) fab.hidden = !changes.showFab.newValue;
+    if (changes.autoCopy) autoCopy = changes.autoCopy.newValue !== false;
   });
 
   // ---------- Selection mode ----------
@@ -181,6 +188,25 @@
   const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 
   async function capture(r) {
+    // Start the clipboard write now, while the mouse-up still counts as a user
+    // gesture; the image is supplied later through a promise.
+    let resolveBlob, rejectBlob;
+    const blobPromise = new Promise((res, rej) => { resolveBlob = res; rejectBlob = rej; });
+    blobPromise.catch(() => {});
+    let copyPromise = null;
+    if (autoCopy) {
+      if (navigator.clipboard && window.ClipboardItem) {
+        try {
+          copyPromise = navigator.clipboard.write([new ClipboardItem({ 'image/png': blobPromise })]);
+        } catch (err) {
+          copyPromise = Promise.reject(err);
+        }
+      } else {
+        copyPromise = Promise.reject(new Error('not allowed on this page'));
+      }
+      copyPromise.catch(() => {});
+    }
+
     // Hide all of our UI so it isn't in the screenshot, and let the page repaint.
     host.style.display = 'none';
     await nextFrame();
@@ -200,8 +226,33 @@
     }
 
     host.style.display = '';
-    if (res && res.ok) showToast(`Captured ✓  (${res.count} in list)`);
-    else showToast(`Capture failed: ${(res && res.error) || 'unknown error'}`, true);
+
+    if (!res || !res.ok) {
+      rejectBlob(new Error('capture failed'));
+      showToast(`Capture failed: ${(res && res.error) || 'unknown error'}`, true);
+      return;
+    }
+
+    if (!copyPromise) {
+      showToast(`Captured ✓  (${res.count} in list)`);
+      return;
+    }
+    try {
+      resolveBlob(dataUrlToBlob(res.dataUrl));
+      await copyPromise;
+      showToast(`Captured & copied to clipboard ✓  (${res.count} in list)`);
+    } catch {
+      showToast(`Captured ✓  (${res.count} in list) — couldn't copy here, use Copy in the popup`);
+    }
+  }
+
+  // Decode locally (no fetch) so strict page CSPs can't block it.
+  function dataUrlToBlob(dataUrl) {
+    const [head, b64] = dataUrl.split(',');
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: head.match(/data:([^;]+)/)[1] });
   }
 
   let toastTimer;

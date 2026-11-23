@@ -8,7 +8,8 @@ Chrome extension (Manifest V3) for capturing any area of a web page by dragging 
 2. Click it (or press **Alt+Shift+S**). The page blurs and the cursor turns into a crosshair.
 3. Click where the capture should start and drag to the opposite corner. The selected area stays sharp
    and shows its size while you drag. Press **Esc** to cancel.
-4. When you release the mouse, the area is captured and added to the list. A "Captured ✓" toast confirms it.
+4. When you release the mouse, the area is captured, **copied to the clipboard**, and added to the list.
+   A toast confirms it. Auto-copy can be turned off in the popup. It needs an https page; elsewhere use **Copy** in the popup.
 5. Open the extension popup to see all captures. You can **Copy** (to clipboard), **Download** or **Delete** each one, or use
    **Download all** / **Clear all**.
 

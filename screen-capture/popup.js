@@ -152,8 +152,10 @@ function render(captures) {
 }
 
 async function load() {
-  const { captures = [], showFab = true } = await chrome.storage.local.get(['captures', 'showFab']);
+  const { captures = [], showFab = true, autoCopy = true } =
+    await chrome.storage.local.get(['captures', 'showFab', 'autoCopy']);
   $('showFab').checked = showFab;
+  $('autoCopy').checked = autoCopy;
   render(captures);
 }
 
@@ -163,6 +165,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 $('showFab').addEventListener('change', (e) => {
   chrome.storage.local.set({ showFab: e.target.checked });
+});
+
+$('autoCopy').addEventListener('change', (e) => {
+  chrome.storage.local.set({ autoCopy: e.target.checked });
 });
 
 $('capture').addEventListener('click', async () => {

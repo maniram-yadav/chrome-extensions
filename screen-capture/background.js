@@ -58,7 +58,7 @@ async function captureArea(tab, rect, viewport, page) {
     createdAt: Date.now(),
   };
   const list = await updateCaptures((l) => [...l, item]);
-  return list.length;
+  return { count: list.length, dataUrl };
 }
 
 function pad(n) {
@@ -133,8 +133,7 @@ async function startSelectionInTab(tabId) {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const handlers = {
     'capture-area': async () => {
-      const count = await captureArea(sender.tab, msg.rect, msg.viewport, msg.page);
-      return { count };
+      return captureArea(sender.tab, msg.rect, msg.viewport, msg.page);
     },
     'start-selection-in-tab': async () => {
       await startSelectionInTab(msg.tabId);
