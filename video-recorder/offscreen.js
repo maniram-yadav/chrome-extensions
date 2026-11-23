@@ -97,24 +97,29 @@ async function start({ rect, viewport, label }) {
   const generator = new MediaStreamTrackGenerator({ kind: 'video' });
   const reader = processor.readable.getReader();
   const writer = generator.writable.getWriter();
-  pipelineAbort = { stopped: false, reader, writer };
+  const pipe = { stopped: false, reader, writer };
+  pipelineAbort = pipe;
+
+  const pxScale = outSize.w / rect.w; // CSS px → video px
+  const fx = VREffects.create(options.effects, outSize.w, outSize.h, pxScale);
 
   (async () => {
-    while (!pipelineAbort.stopped) {
+    while (!pipe.stopped) {
       const { value: frame, done } = await reader.read();
       if (done) break;
       try {
         const fw = frame.displayWidth, fh = frame.displayHeight;
         const sx = fw / viewport.w, sy = fh / viewport.h;
-        ctx.drawImage(frame, rect.x * sx, rect.y * sy, rect.w * sx, rect.h * sy, 0, 0, outSize.w, outSize.h);
-        drawLabel(ctx, label, outSize.w, outSize.h, outSize.w / rect.w);
+        const src = [rect.x * sx, rect.y * sy, rect.w * sx, rect.h * sy];
+        fx.drawFrame(ctx, frame, src);
+        drawLabel(ctx, label, outSize.w, outSize.h, pxScale);
         const out = new VideoFrame(canvas, { timestamp: frame.timestamp });
         frame.close();
         await writer.write(out);
         out.close();
       } catch (e) {
         try { frame.close(); } catch (_) {}
-        if (pipelineAbort.stopped) break;
+        if (pipe.stopped) break;
         console.warn('frame error', e);
       }
     }

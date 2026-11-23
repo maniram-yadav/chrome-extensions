@@ -17,7 +17,18 @@ const DEFAULT_SETTINGS = {
     bgColor: '#000000',
     bgOpacity: 0.6,
   },
+  effects: { ...VREffects.DEFAULTS },
 };
+
+// Preview is drawn at roughly this fraction of real CSS size (popup is small).
+const PREVIEW_SCALE = 0.45;
+const FX_FIELDS = ['brightness', 'contrast', 'saturation', 'hue', 'blur', 'pixelate', 'vignette', 'grain'];
+const FX_FMT = {
+  brightness: (v) => v + '%', contrast: (v) => v + '%', saturation: (v) => v + '%',
+  hue: (v) => v + '°', blur: (v) => v + 'px', pixelate: (v) => (+v ? v + 'px' : 'off'),
+  vignette: (v) => v, grain: (v) => v,
+};
+const fxId = (k) => 'fx' + k[0].toUpperCase() + k.slice(1);
 
 let settings = structuredClone(DEFAULT_SETTINGS);
 let micGranted = false;
@@ -29,7 +40,8 @@ const objectUrls = [];
 async function loadSettings() {
   const { vrSettings } = await chrome.storage.local.get('vrSettings');
   if (vrSettings) {
-    settings = { ...DEFAULT_SETTINGS, ...vrSettings, label: { ...DEFAULT_SETTINGS.label, ...(vrSettings.label || {}) } };
+    settings = { ...DEFAULT_SETTINGS, ...vrSettings, label: { ...DEFAULT_SETTINGS.label, ...(vrSettings.label || {}) },
+      effects: { ...DEFAULT_SETTINGS.effects, ...(vrSettings.effects || {}) } };
   }
   $('optTabAudio').checked = settings.tabAudio;
   $('optMic').checked = settings.mic;
@@ -45,7 +57,22 @@ async function loadSettings() {
   $('lblBg').checked = l.background;
   $('lblBgColor').value = l.bgColor;
   setPosition(l.position, false);
+  writeEffectControls();
   updatePreview();
+}
+
+function writeEffectControls() {
+  const fx = settings.effects;
+  $('fxPreset').value = VREffects.PRESETS[fx.preset] ? fx.preset : 'none';
+  FX_FIELDS.forEach((k) => { $(fxId(k)).value = fx[k]; });
+  updateEffectOutputs();
+}
+
+function updateEffectOutputs() {
+  FX_FIELDS.forEach((k) => { $(fxId(k) + 'Out').textContent = FX_FMT[k](settings.effects[k]); });
+  const on = VREffects.isActive(settings.effects);
+  $('fxState').textContent = on ? '● on — applied automatically' : '(none — off)';
+  $('fxState').classList.toggle('on', on);
 }
 
 function readSettings() {
@@ -63,10 +90,13 @@ function readSettings() {
     background: $('lblBg').checked,
     bgColor: $('lblBgColor').value,
   });
+  settings.effects.preset = $('fxPreset').value;
+  FX_FIELDS.forEach((k) => { settings.effects[k] = Number($(fxId(k)).value); });
 }
 
 function saveSettings() {
   readSettings();
+  updateEffectOutputs();
   updatePreview();
   updateMicHint();
   chrome.storage.local.set({ vrSettings: settings });
@@ -79,12 +109,47 @@ function setPosition(pos, save = true) {
   if (save) saveSettings();
 }
 
+// Sample scene the effects are previewed on.
+let sceneCanvas = null;
+function getScene(W, H) {
+  if (sceneCanvas && sceneCanvas.width === W && sceneCanvas.height === H) return sceneCanvas;
+  const c = new OffscreenCanvas(W, H);
+  const g = c.getContext('2d');
+  const sky = g.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, '#38bdf8'); sky.addColorStop(1, '#fde68a');
+  g.fillStyle = sky; g.fillRect(0, 0, W, H);
+  g.fillStyle = '#f97316'; g.beginPath(); g.arc(W * 0.78, H * 0.3, H * 0.16, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#16a34a'; g.beginPath(); g.moveTo(0, H); g.lineTo(0, H * 0.65);
+  g.quadraticCurveTo(W * 0.3, H * 0.4, W * 0.6, H * 0.7); g.quadraticCurveTo(W * 0.8, H * 0.8, W, H * 0.6);
+  g.lineTo(W, H); g.fill();
+  ['#e11d48', '#7c3aed', '#2563eb', '#facc15'].forEach((col, i) => {
+    g.fillStyle = col; g.fillRect(W * 0.06 + i * W * 0.09, H * 0.12, W * 0.07, H * 0.25);
+  });
+  g.fillStyle = '#111827'; g.font = `bold ${Math.round(H * 0.11)}px system-ui, sans-serif`;
+  g.fillText('Sample page', W * 0.06, H * 0.55);
+  sceneCanvas = c;
+  return c;
+}
+
+function renderEffectsPreview() {
+  const cv = $('pvCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const W = Math.max(2, Math.round(cv.clientWidth * dpr));
+  const H = Math.max(2, Math.round(cv.clientHeight * dpr));
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  const fx = VREffects.create(settings.effects, W, H, PREVIEW_SCALE * dpr);
+  fx.drawFrame(ctx, getScene(W, H), [0, 0, W, H]);
+}
+
 function updatePreview() {
+  renderEffectsPreview();
   const l = settings.label;
   const span = $('previewLabel');
   span.textContent = l.text || '(no label)';
   span.style.opacity = l.text ? 1 : 0.4;
-  const size = Math.max(6, l.size * 0.45);
+  const size = Math.max(6, l.size * PREVIEW_SCALE);
   Object.assign(span.style, {
     fontSize: size + 'px',
     fontWeight: l.bold ? '700' : '400',
@@ -155,6 +220,7 @@ async function start(mode) {
       bitrate: settings.bitrate,
       fps: settings.fps,
       label: settings.label,
+      effects: settings.effects,
     },
   });
   setButtonsDisabled(false);
@@ -297,6 +363,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     o.textContent = 'MP4 (not supported)';
   }
 
+  const presetSel = $('fxPreset');
+  Object.entries(VREffects.PRESETS).forEach(([key, p]) => presetSel.add(new Option(p.name, key)));
+
   await loadSettings();
   if (!mp4ok && settings.format === 'mp4') $('optFormat').value = 'webm';
   await checkMic();
@@ -318,6 +387,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   ['optTabAudio', 'optMic', 'optFormat', 'optBitrate', 'optFps', 'lblColor', 'lblBold', 'lblBg', 'lblBgColor']
     .forEach((id) => $(id).addEventListener('change', saveSettings));
   $('lblText').addEventListener('input', saveSettings);
+
+  $('fxPreset').addEventListener('change', saveSettings);
+  FX_FIELDS.forEach((k) => $(fxId(k)).addEventListener('input', saveSettings));
+  $('fxReset').addEventListener('click', () => {
+    settings.effects = { ...VREffects.DEFAULTS };
+    writeEffectControls();
+    saveSettings();
+  });
 
   const link = (a, b) => {
     $(a).addEventListener('input', () => { $(b).value = $(a).value; saveSettings(); });
