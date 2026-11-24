@@ -28,6 +28,8 @@ You need a system prompt, some input, or both. If there's only a system prompt, 
 | Gemini | `:generateContent` | `:generateContent` (Gemini image models) or `:predict` (Imagen) | `:predictLongRunning` (Veo), then poll and download |
 | Grok (xAI) | `/v1/chat/completions` | `/v1/images/generations` | `/v1/videos/generations`, then poll `/v1/videos/{id}` |
 
+For images and video, an **Aspect ratio** list shows only the ratios the selected model accepts. OpenAI uses pixel sizes such as 1536×1024, and dall-e-2 is square only. **Model default** sends no ratio, so the provider chooses.
+
 Model IDs change often. The ↻ button next to the model list loads the current models from the provider using your key. **Custom model ID…** lets you type any ID, and it's remembered.
 
 ## Notes

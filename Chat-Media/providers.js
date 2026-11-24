@@ -47,6 +47,50 @@ export const PROVIDERS = {
 };
 
 /* ------------------------------------------------------------------ */
+/* Aspect ratios                                                       */
+/* ------------------------------------------------------------------ */
+
+function ratioLabel(r) {
+  const [w, h] = r.split(':').map(Number);
+  return `${r} · ${w === h ? 'Square' : w > h ? 'Landscape' : 'Portrait'}`;
+}
+const ratios = (...list) => list.map((r) => ({ value: r, label: ratioLabel(r) }));
+
+// The aspect ratios a model accepts, as { value, label }. `value` is what gets
+// sent to the API: a "W:H" ratio, or a pixel size for OpenAI. An empty list
+// means the model has no choice (or the type has no aspect ratio, e.g. text).
+export function aspectOptions(provider, type, model = '') {
+  const m = model.toLowerCase();
+  if (type === 'image') {
+    if (provider === 'openai') {
+      if (m.startsWith('dall-e-2')) return []; // square only
+      if (m.startsWith('dall-e-3')) {
+        return [
+          { value: '1024x1024', label: '1:1 · Square (1024×1024)' },
+          { value: '1792x1024', label: '7:4 · Landscape (1792×1024)' },
+          { value: '1024x1792', label: '4:7 · Portrait (1024×1792)' },
+        ];
+      }
+      return [
+        { value: '1024x1024', label: '1:1 · Square (1024×1024)' },
+        { value: '1536x1024', label: '3:2 · Landscape (1536×1024)' },
+        { value: '1024x1536', label: '2:3 · Portrait (1024×1536)' },
+      ];
+    }
+    if (provider === 'gemini') {
+      if (m.includes('imagen')) return ratios('1:1', '4:3', '3:4', '16:9', '9:16');
+      return ratios('1:1', '3:2', '2:3', '4:3', '3:4', '16:9', '9:16', '21:9');
+    }
+    if (provider === 'xai') return ratios('1:1', '3:2', '2:3', '4:3', '3:4', '16:9', '9:16');
+  }
+  if (type === 'video') {
+    if (provider === 'gemini') return ratios('16:9', '9:16');
+    if (provider === 'xai') return ratios('16:9', '9:16', '1:1', '4:3', '3:4', '3:2', '2:3');
+  }
+  return [];
+}
+
+/* ------------------------------------------------------------------ */
 /* Shared helpers                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -186,8 +230,9 @@ const openai = {
     return { kind: 'text', text: chatText(data) };
   },
 
-  async image({ model, apiKey, system, input, signal }) {
+  async image({ model, apiKey, system, input, aspect, signal }) {
     const body = { model, prompt: mergePrompt(system, input), n: 1 };
+    if (aspect) body.size = aspect;
     // gpt-image models always return base64 and reject response_format.
     if (/^dall-e/i.test(model)) body.response_format = 'b64_json';
     const data = await call(`${OPENAI}/images/generations`, { headers: bearer(apiKey), body, signal });
@@ -217,14 +262,14 @@ const gemini = {
     throw new Error(block ? `Blocked: ${block}` : `The model returned no text${finish ? ` (${finish})` : ''}.`);
   },
 
-  async image({ model, apiKey, system, input, signal }) {
+  async image({ model, apiKey, system, input, aspect, signal }) {
     const prompt = mergePrompt(system, input);
 
     // Imagen models use the :predict endpoint.
     if (/imagen/i.test(model)) {
       const data = await call(`${geminiModel(model)}:predict`, {
         headers: googKey(apiKey),
-        body: { instances: [{ prompt }], parameters: { sampleCount: 1 } },
+        body: { instances: [{ prompt }], parameters: { sampleCount: 1, ...(aspect && { aspectRatio: aspect }) } },
         signal,
       });
       const pred = data?.predictions?.[0];
@@ -237,7 +282,10 @@ const gemini = {
       headers: googKey(apiKey),
       body: {
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
+        generationConfig: {
+          responseModalities: ['TEXT', 'IMAGE'],
+          ...(aspect && { imageConfig: { aspectRatio: aspect } }),
+        },
       },
       signal,
     });
@@ -253,10 +301,13 @@ const gemini = {
   },
 
   // Veo: start a long-running operation, poll it, then download the file.
-  async video({ model, apiKey, system, input, signal, onProgress }) {
+  async video({ model, apiKey, system, input, aspect, signal, onProgress }) {
     const op = await call(`${geminiModel(model)}:predictLongRunning`, {
       headers: googKey(apiKey),
-      body: { instances: [{ prompt: mergePrompt(system, input) }] },
+      body: {
+        instances: [{ prompt: mergePrompt(system, input) }],
+        ...(aspect && { parameters: { aspectRatio: aspect } }),
+      },
       signal,
     });
     if (!op?.name) throw new Error('The API did not return an operation to track.');
@@ -299,20 +350,26 @@ const xai = {
     return { kind: 'text', text: chatText(data) };
   },
 
-  async image({ model, apiKey, system, input, signal }) {
+  async image({ model, apiKey, system, input, aspect, signal }) {
     const data = await call(`${XAI}/images/generations`, {
       headers: bearer(apiKey),
-      body: { model, prompt: mergePrompt(system, input), n: 1, response_format: 'b64_json' },
+      body: {
+        model,
+        prompt: mergePrompt(system, input),
+        n: 1,
+        response_format: 'b64_json',
+        ...(aspect && { aspect_ratio: aspect }),
+      },
       signal,
     });
     return imageFromData(data, signal);
   },
 
   // Start a job, then poll GET /videos/{request_id} until it has a URL.
-  async video({ model, apiKey, system, input, signal, onProgress }) {
+  async video({ model, apiKey, system, input, aspect, signal, onProgress }) {
     const start = await call(`${XAI}/videos/generations`, {
       headers: bearer(apiKey),
-      body: { model, prompt: mergePrompt(system, input) },
+      body: { model, prompt: mergePrompt(system, input), ...(aspect && { aspect_ratio: aspect }) },
       signal,
     });
     const id = start?.request_id || start?.id;

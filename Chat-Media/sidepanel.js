@@ -1,4 +1,4 @@
-import { PROVIDERS, generate, listModels } from './providers.js';
+import { PROVIDERS, aspectOptions, generate, listModels } from './providers.js';
 
 const CUSTOM = '__custom__';
 const MANUAL = '__manual__';
@@ -100,7 +100,7 @@ function deleteBtn(label, onConfirm) {
 /* State + storage                                                     */
 /* ------------------------------------------------------------------ */
 
-const DEFAULT_PREFS = { provider: 'openai', type: 'text', model: {}, promptId: '', keyId: {} };
+const DEFAULT_PREFS = { provider: 'openai', type: 'text', model: {}, aspect: {}, promptId: '', keyId: {} };
 
 let prompts = [];        // [{ id, name, text }]
 let apiKeys = [];        // [{ id, provider, label, key }]
@@ -121,6 +121,7 @@ async function loadState() {
   customModels = d.customModels || {};
   prefs = { ...DEFAULT_PREFS, ...d.prefs };
   prefs.model ||= {};
+  prefs.aspect ||= {};
   prefs.keyId ||= {};
   if (!PROVIDERS[prefs.provider]) prefs.provider = 'openai';
 }
@@ -136,6 +137,8 @@ const ui = {
   modelCustom: $('#modelCustom'),
   modelNote: $('#modelNote'),
   refresh: $('#refreshModels'),
+  aspect: $('#aspect'),
+  aspectField: $('#aspectField'),
   prompt: $('#prompt'),
   promptPreview: $('#promptPreview'),
   apiKey: $('#apiKey'),
@@ -160,6 +163,20 @@ function modelChoices(p, t) {
   ];
 }
 
+const currentModelId = () => (ui.model.value === CUSTOM ? ui.modelCustom.value.trim() : ui.model.value);
+const aspectPrefKey = () => `${prefs.provider}:${prefs.type}:${currentModelId()}`;
+
+// Rebuilds the aspect ratio list for the selected model. Hidden when the
+// model has no choice (text, dall-e-2, unsupported video).
+function renderAspect() {
+  const options = unsupportedMsg() ? [] : aspectOptions(prefs.provider, prefs.type, currentModelId());
+  ui.aspectField.hidden = options.length === 0;
+  ui.aspect.replaceChildren(new Option('Model default', ''));
+  for (const o of options) ui.aspect.append(new Option(o.label, o.value));
+  const saved = prefs.aspect[aspectPrefKey()];
+  ui.aspect.value = options.some((o) => o.value === saved) ? saved : '';
+}
+
 function renderModels() {
   const p = prefs.provider;
   const t = prefs.type;
@@ -173,6 +190,7 @@ function renderModels() {
     ui.modelNote.textContent = unsupported;
     ui.modelNote.className = 'note warn';
     ui.modelNote.hidden = false;
+    renderAspect();
     return;
   }
 
@@ -192,6 +210,7 @@ function renderModels() {
   } else {
     ui.modelNote.hidden = true;
   }
+  renderAspect();
 }
 
 function renderPromptSelect() {
@@ -328,6 +347,8 @@ async function onGenerate() {
     (ui.apiKey.value === MANUAL ? ui.manualKey : ui.apiKey).focus();
     return;
   }
+  const aspect = ui.aspectField.hidden ? '' : ui.aspect.value;
+  const aspectLabel = aspect ? ui.aspect.selectedOptions[0].textContent.split(' · ')[0] : '';
   const promptObj = prompts.find((pr) => pr.id === ui.prompt.value);
   const system = promptObj?.text.trim() || '';
   const input = ui.input.value.trim();
@@ -340,11 +361,11 @@ async function onGenerate() {
   const ctrl = new AbortController();
   running = ctrl;
   updateGenerateButton();
-  const card = createCard({ provider: p, type: t, model, promptName: promptObj?.name, input });
+  const card = createCard({ provider: p, type: t, model, aspectLabel, promptName: promptObj?.name, input });
 
   try {
     const result = await generate({
-      provider: p, type: t, model, apiKey, system, input,
+      provider: p, type: t, model, apiKey, system, input, aspect,
       signal: ctrl.signal,
       onProgress: (msg) => card.setStatus(msg),
     });
@@ -423,6 +444,7 @@ function createCard(meta) {
   const elapsed = el('span', { class: 'elapsed small' }, '0:00');
   const body = el('div', { class: 'card-body' }, el('div', { class: 'pending' }, el('span', { class: 'spinner' }), status, elapsed));
   const promptLine = [meta.promptName && `[${meta.promptName}]`, meta.input].filter(Boolean).join(' ');
+  const metaText = [PROVIDERS[meta.provider].name, meta.model, meta.aspectLabel, time].filter(Boolean).join(' · ');
 
   const card = el(
     'article',
@@ -431,7 +453,7 @@ function createCard(meta) {
       'header',
       { class: 'card-head' },
       el('span', { class: 'badge' }, meta.type),
-      el('span', { class: 'card-meta', title: `${PROVIDERS[meta.provider].name} · ${meta.model}` }, `${PROVIDERS[meta.provider].name} · ${meta.model} · ${time}`),
+      el('span', { class: 'card-meta', title: metaText }, metaText),
       actions,
     ),
     promptLine ? el('p', { class: 'card-prompt', title: promptLine }, promptLine) : null,
@@ -676,6 +698,13 @@ function wire() {
       prefs.model[modelPrefKey()] = ui.model.value;
       savePrefs();
     }
+    renderAspect();
+  });
+  ui.modelCustom.addEventListener('input', renderAspect);
+
+  ui.aspect.addEventListener('change', () => {
+    prefs.aspect[aspectPrefKey()] = ui.aspect.value;
+    savePrefs();
   });
 
   ui.refresh.addEventListener('click', refreshModels);
