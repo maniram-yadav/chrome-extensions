@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chat Media</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1 class="brand"><img src="icons/icon48.png" alt="" width="20" height="20" />Chat Media</h1>
+      <nav class="tabs" role="tablist">
+        <button class="tab" role="tab" data-view="generate" aria-selected="true">Generate</button>
+        <button class="tab" role="tab" data-view="prompts" aria-selected="false">Prompts</button>
+        <button class="tab" role="tab" data-view="keys" aria-selected="false">API keys</button>
+      </nav>
+    </header>
+
+    <!-- Generate -->
+    <main id="view-generate" class="view view-generate">
+      <section class="results" aria-live="polite">
+        <div class="results-head" id="resultsHead" hidden>
+          <span class="muted">Results (newest first)</span>
+          <button class="btn-link" id="clearResults" type="button">Clear all</button>
+        </div>
+        <div id="emptyState" class="empty">
+          <p class="empty-title">Nothing generated yet</p>
+          <p class="muted">Pick a model and media type below, then click Generate. Results appear here with copy and download buttons.</p>
+        </div>
+        <div id="results"></div>
+      </section>
+
+      <form id="genForm" class="composer" autocomplete="off">
+        <div class="field">
+          <span class="field-label"><label for="userInput">Your input <span class="muted">(optional)</span></label></span>
+          <textarea id="userInput" rows="3"></textarea>
+        </div>
+
+        <div class="field">
+          <span class="field-label">
+            <label for="prompt">System prompt</label>
+            <button type="button" class="btn-link" data-goto="prompts">Manage</button>
+          </span>
+          <select id="prompt"></select>
+          <p id="promptPreview" class="preview" hidden></p>
+        </div>
+
+        <div class="grid-2">
+          <label class="field">
+            <span class="field-label">Provider</span>
+            <select id="provider"></select>
+          </label>
+          <div class="field">
+            <span class="field-label" id="typeLabel">Media type</span>
+            <div class="segmented" role="group" aria-labelledby="typeLabel" id="typeGroup">
+              <button type="button" data-type="text">Text</button>
+              <button type="button" data-type="image">Image</button>
+              <button type="button" data-type="video">Video</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <span class="field-label"><label for="model">Model</label></span>
+          <div class="inline">
+            <select id="model"></select>
+            <button type="button" class="icon-btn" id="refreshModels" title="Load the latest models from the provider (uses your API key)" aria-label="Refresh model list"></button>
+          </div>
+          <input id="modelCustom" type="text" placeholder="Enter a model ID, e.g. gpt-5" hidden />
+          <p id="modelNote" class="note" hidden></p>
+        </div>
+
+        <div class="field">
+          <span class="field-label">
+            <label for="apiKey">API key</label>
+            <button type="button" class="btn-link" data-goto="keys">Manage</button>
+          </span>
+          <select id="apiKey"></select>
+          <div id="manualKeyWrap" class="manual-key" hidden>
+            <input id="manualKey" type="password" placeholder="Paste API key" spellcheck="false" />
+            <label class="check"><input type="checkbox" id="saveKey" /> Save this key</label>
+          </div>
+        </div>
+
+        <div class="actions-row">
+          <span class="muted small">Ctrl+Enter to generate</span>
+          <button type="submit" id="generate" class="btn primary">Generate</button>
+        </div>
+      </form>
+    </main>
+
+    <!-- Prompts -->
+    <main id="view-prompts" class="view view-scroll" hidden>
+      <form id="promptForm" class="panel" autocomplete="off">
+        <h2 id="promptFormTitle">New system prompt</h2>
+        <label class="field">
+          <span class="field-label">Name</span>
+          <input id="promptName" type="text" maxlength="60" required placeholder="e.g. Blog writer" />
+        </label>
+        <label class="field">
+          <span class="field-label">Prompt</span>
+          <textarea id="promptText" rows="6" required placeholder="You are a concise copywriter. Reply in plain English…"></textarea>
+        </label>
+        <div class="actions-row end">
+          <button type="button" id="promptCancel" class="btn ghost" hidden>Cancel</button>
+          <button type="submit" id="promptSubmit" class="btn primary">Save prompt</button>
+        </div>
+      </form>
+      <h2 class="section-title">Saved prompts</h2>
+      <ul id="promptList" class="list"></ul>
+    </main>
+
+    <!-- API keys -->
+    <main id="view-keys" class="view view-scroll" hidden>
+      <form id="keyForm" class="panel" autocomplete="off">
+        <h2>Add an API key</h2>
+        <div class="grid-2">
+          <label class="field">
+            <span class="field-label">Provider</span>
+            <select id="keyProvider"></select>
+          </label>
+          <label class="field">
+            <span class="field-label">Label</span>
+            <input id="keyLabel" type="text" maxlength="40" placeholder="e.g. Personal" />
+          </label>
+        </div>
+        <label class="field">
+          <span class="field-label">Key</span>
+          <input id="keyValue" type="password" required spellcheck="false" />
+        </label>
+        <div class="actions-row end">
+          <button type="submit" class="btn primary">Save key</button>
+        </div>
+        <p class="muted small">Keys are kept in this browser only (chrome.storage.local). They are not synced, and they are sent only to the provider they belong to.</p>
+      </form>
+      <h2 class="section-title">Saved keys</h2>
+      <ul id="keyList" class="list"></ul>
+    </main>
+
+    <div id="toast" class="toast" role="status" hidden></div>
+
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>
